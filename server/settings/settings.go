@@ -40,6 +40,8 @@ var (
 func InitSets(readOnly, searchWA bool) {
 	ReadOnly = readOnly
 	SearchWA = searchWA
+	// Reset in-memory config so repeated Start/Stop in one process doesn't trip migrations
+	BTsets = nil
 
 	bboltDB := NewTDB()
 	if bboltDB == nil {

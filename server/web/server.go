@@ -30,12 +30,22 @@ import (
 
 	swaggerFiles "github.com/swaggo/files"     // swagger embed files
 	ginSwagger "github.com/swaggo/gin-swagger" // gin-swagger middleware
+	"net/http"
+	"context"
+	"time"
 )
 
 var (
-	BTS      = torr.NewBTS()
-	waitChan = make(chan error)
+	BTS       = torr.NewBTS()
+	waitChan  = make(chan error, 2)
+	httpSrv   *http.Server
+	httpsSrv  *http.Server
 )
+
+// WaitChan is used by embedders to signal shutdown without blocking Stop().
+func WaitChan() chan<- error {
+	return waitChan
+}
 
 //	@title			Swagger Torrserver API
 //	@version		{version.Version}
@@ -112,15 +122,29 @@ func Start() {
 			log.TLogln("Saving path to ssl cert and key in db", settings.BTsets.SslCert, settings.BTsets.SslKey)
 			settings.SetBTSets(settings.BTsets)
 		}
+		httpsSrv = &http.Server{
+			Addr:    settings.IP + ":" + settings.SslPort,
+			Handler: route,
+		}
 		go func() {
 			log.TLogln("Start https server at", settings.IP+":"+settings.SslPort)
-			waitChan <- route.RunTLS(settings.IP+":"+settings.SslPort, settings.BTsets.SslCert, settings.BTsets.SslKey)
+			err := httpsSrv.ListenAndServeTLS(settings.BTsets.SslCert, settings.BTsets.SslKey)
+			if err != nil && err != http.ErrServerClosed {
+				waitChan <- err
+			}
 		}()
 	}
 
+	httpSrv = &http.Server{
+		Addr:    settings.IP + ":" + settings.Port,
+		Handler: route,
+	}
 	go func() {
 		log.TLogln("Start http server at", settings.IP+":"+settings.Port)
-		waitChan <- route.Run(settings.IP + ":" + settings.Port)
+		err := httpSrv.ListenAndServe()
+		if err != nil && err != http.ErrServerClosed {
+			waitChan <- err
+		}
 	}()
 }
 
@@ -133,7 +157,18 @@ func Stop() {
 	// Unmount FUSE filesystem if mounted
 	fuse.FuseCleanup()
 	BTS.Disconnect()
-	waitChan <- nil
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	if httpsSrv != nil {
+		_ = httpsSrv.Shutdown(ctx)
+		httpsSrv = nil
+	}
+	if httpSrv != nil {
+		_ = httpSrv.Shutdown(ctx)
+		httpSrv = nil
+	}
 }
 
 // echo godoc

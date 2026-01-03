@@ -13,6 +13,30 @@ import (
 	"server/web"
 )
 
+// SetPath allows embedders to override the config path (config.db, settings.json, caches).
+// This must be called before Start, otherwise InitSets will use the zero value.
+func SetPath(path string) {
+	settings.Path = path
+}
+
+// StartWithArgs allows embedders to configure settings without CLI flags.
+func StartWithArgs(port, ip, sslport, sslCert, sslKey string, sslEnabled, roSets, searchWA bool, tgtoken string) {
+	if settings.Args == nil {
+		settings.Args = &settings.ExecArgs{}
+	}
+	settings.Args.Port = port
+	settings.Args.IP = ip
+	settings.Args.Ssl = sslEnabled
+	settings.Args.SslPort = sslport
+	settings.Args.SslCert = sslCert
+	settings.Args.SslKey = sslKey
+	settings.Args.RDB = roSets
+	settings.Args.SearchWA = searchWA
+	settings.Args.TGToken = tgtoken
+
+	Start()
+}
+
 func Start() {
 	settings.InitSets(settings.Args.RDB, settings.Args.SearchWA)
 	// https checks
@@ -141,4 +165,8 @@ func WaitServer() string {
 func Stop() {
 	web.Stop()
 	settings.CloseDB()
+	select {
+	case web.WaitChan() <- nil:
+	default:
+	}
 }

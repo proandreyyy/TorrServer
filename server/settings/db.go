@@ -1,6 +1,8 @@
 package settings
 
 import (
+	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -21,10 +23,27 @@ func NewTDB() TorrServerDB {
 	if globalBboltDB != nil {
 		return globalBboltDB // Return existing instance
 	}
-	db, err := bolt.Open(filepath.Join(Path, "config.db"), 0o666, &bolt.Options{Timeout: 5 * time.Second})
+	dbPath := filepath.Join(Path, "config.db")
+	open := func() (*bolt.DB, error) {
+		// Small timeout to avoid hanging on stale locks on tvOS sandbox FS.
+		return bolt.Open(dbPath, 0o666, &bolt.Options{Timeout: 1500 * time.Millisecond})
+	}
+
+	db, err := open()
 	if err != nil {
-		log.TLogln(err)
-		return nil
+		log.TLogln("bbolt open failed:", err)
+		// Try to recover from stale locks/corrupt file: move old DB aside and recreate.
+		_ = os.Remove(dbPath + ".lock")
+		recoveredPath := fmt.Sprintf("%s.bak.%d", dbPath, time.Now().Unix())
+		if renameErr := os.Rename(dbPath, recoveredPath); renameErr == nil {
+			log.TLogln("renamed broken DB to", recoveredPath)
+		}
+		db, err = open()
+		if err != nil {
+			log.TLogln("failed to recreate config.db:", err)
+			return nil
+		}
+		log.TLogln("recreated empty config.db")
 	}
 
 	tdb := new(TDB)
