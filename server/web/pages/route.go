@@ -1,6 +1,8 @@
 package pages
 
 import (
+	"os"
+
 	"github.com/anacrolix/torrent/metainfo"
 	"github.com/gin-gonic/gin"
 
@@ -13,6 +15,9 @@ import (
 )
 
 func SetupRoute(route gin.IRouter) {
+	if os.Getenv("TS_DISABLE_UI") != "" {
+		return
+	}
 	authorized := route.Group("/", auth.CheckAuth())
 
 	webPagesAuth := route.Group("/", func() gin.HandlerFunc {

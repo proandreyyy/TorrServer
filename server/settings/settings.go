@@ -74,6 +74,14 @@ func InitSets(readOnly, searchWA bool) {
 
 	// Load settings
 	loadBTSets()
+	if os.Getenv("TS_MINIMAL") != "" && BTsets != nil {
+		// Minimal mode: disable optional features to save resources for embedded use.
+		BTsets.EnableDLNA = false
+		BTsets.EnableRutorSearch = false
+		BTsets.EnableTorznabSearch = false
+		BTsets.EnableDebug = false
+		SetBTSets(BTsets)
+	}
 
 	// Update preferences if they changed
 	if BTsets != nil && (BTsets.StoreSettingsInJson != settingsStoragePref || BTsets.StoreViewedInJson != viewedStoragePref) {
