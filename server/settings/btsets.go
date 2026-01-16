@@ -18,10 +18,10 @@ type TorznabConfig struct {
 }
 
 const (
-	cacheDefaultsVersion = 1
+	cacheDefaultsVersion = 2
 	cacheSizeDefault     = 332 * 1024 * 1024
 	preloadCacheDefault  = 10
-	cacheDefaultPath     = "/Library/Caches/TorrServerCache"
+	cacheDefaultPath     = ""
 )
 
 type BTSets struct {
@@ -87,6 +87,18 @@ func (v *BTSets) String() string {
 	return string(buf)
 }
 
+func isDefaultCachePath(path string) bool {
+	if path == "" {
+		return false
+	}
+	cleaned := filepath.Clean(path)
+	def := filepath.Clean(cacheDefaultPath)
+	if cleaned == def {
+		return true
+	}
+	return strings.HasPrefix(cleaned, def+string(filepath.Separator))
+}
+
 var BTsets *BTSets
 
 func SetBTSets(sets *BTSets) {
@@ -125,6 +137,9 @@ func SetBTSets(sets *BTSets) {
 		sets.PreloadCache = 100
 	}
 
+	sets.UseDisk = false
+	sets.TorrentsSavePath = ""
+
 	if sets.TorrentsSavePath == "" {
 		sets.UseDisk = false
 	} else if sets.UseDisk {
@@ -159,8 +174,8 @@ func SetDefaultConfig() {
 	sets := new(BTSets)
 	sets.CacheSize = cacheSizeDefault // 332 MB
 	sets.PreloadCache = preloadCacheDefault
-	sets.UseDisk = true
-	sets.TorrentsSavePath = cacheDefaultPath
+	sets.UseDisk = false
+	sets.TorrentsSavePath = ""
 	sets.RemoveCacheOnDrop = true
 	sets.CacheDefaultsVersion = cacheDefaultsVersion
 	sets.ConnectionsLimit = 25
@@ -189,6 +204,10 @@ func loadBTSets() {
 			if BTsets.ReaderReadAHead < 5 {
 				BTsets.ReaderReadAHead = 5
 			}
+			BTsets.UseDisk = false
+			BTsets.TorrentsSavePath = ""
+			SetBTSets(BTsets)
+			return
 			if applyCacheDefaultsMigration(BTsets) {
 				SetBTSets(BTsets)
 			}
@@ -204,11 +223,10 @@ func applyCacheDefaultsMigration(sets *BTSets) bool {
 	if sets.CacheDefaultsVersion >= cacheDefaultsVersion {
 		return false
 	}
-	sets.CacheSize = cacheSizeDefault
-	sets.PreloadCache = preloadCacheDefault
-	sets.UseDisk = true
-	sets.TorrentsSavePath = cacheDefaultPath
-	sets.RemoveCacheOnDrop = true
+
+	sets.UseDisk = false
+	sets.TorrentsSavePath = ""
+
 	sets.CacheDefaultsVersion = cacheDefaultsVersion
 	log.TLogln("Applied cache defaults migration")
 	return true
