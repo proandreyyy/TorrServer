@@ -17,11 +17,19 @@ type TorznabConfig struct {
 	Name string
 }
 
+const (
+	cacheDefaultsVersion = 1
+	cacheSizeDefault     = 332 * 1024 * 1024
+	preloadCacheDefault  = 10
+	cacheDefaultPath     = "/Library/Caches/TorrServerCache"
+)
+
 type BTSets struct {
 	// Cache
-	CacheSize       int64 // in byte, def 64 MB
+	CacheSize       int64 // in byte, def 332 MB
 	ReaderReadAHead int   // in percent, 5%-100%, [...S__X__E...] [S-E] not clean
 	PreloadCache    int   // in percent
+	CacheDefaultsVersion int // cache defaults migration marker
 
 	// Disk
 	UseDisk           bool
@@ -86,8 +94,15 @@ func SetBTSets(sets *BTSets) {
 		return
 	}
 	// failsafe checks (use defaults)
+	if sets.CacheDefaultsVersion == 0 {
+		if BTsets != nil && BTsets.CacheDefaultsVersion > 0 {
+			sets.CacheDefaultsVersion = BTsets.CacheDefaultsVersion
+		} else {
+			sets.CacheDefaultsVersion = cacheDefaultsVersion
+		}
+	}
 	if sets.CacheSize == 0 {
-		sets.CacheSize = 64 * 1024 * 1024
+		sets.CacheSize = cacheSizeDefault
 	}
 	if sets.ConnectionsLimit == 0 {
 		sets.ConnectionsLimit = 25
@@ -142,8 +157,12 @@ func SetBTSets(sets *BTSets) {
 
 func SetDefaultConfig() {
 	sets := new(BTSets)
-	sets.CacheSize = 64 * 1024 * 1024 // 64 MB
-	sets.PreloadCache = 50
+	sets.CacheSize = cacheSizeDefault // 332 MB
+	sets.PreloadCache = preloadCacheDefault
+	sets.UseDisk = true
+	sets.TorrentsSavePath = cacheDefaultPath
+	sets.RemoveCacheOnDrop = true
+	sets.CacheDefaultsVersion = cacheDefaultsVersion
 	sets.ConnectionsLimit = 25
 	sets.RetrackersMode = 1
 	sets.TorrentDisconnectTimeout = 30
@@ -170,10 +189,27 @@ func loadBTSets() {
 			if BTsets.ReaderReadAHead < 5 {
 				BTsets.ReaderReadAHead = 5
 			}
+			if applyCacheDefaultsMigration(BTsets) {
+				SetBTSets(BTsets)
+			}
 			return
 		}
 		log.TLogln("Error unmarshal btsets", err)
 	}
 	// initialize defaults on error
 	SetDefaultConfig()
+}
+
+func applyCacheDefaultsMigration(sets *BTSets) bool {
+	if sets.CacheDefaultsVersion >= cacheDefaultsVersion {
+		return false
+	}
+	sets.CacheSize = cacheSizeDefault
+	sets.PreloadCache = preloadCacheDefault
+	sets.UseDisk = true
+	sets.TorrentsSavePath = cacheDefaultPath
+	sets.RemoveCacheOnDrop = true
+	sets.CacheDefaultsVersion = cacheDefaultsVersion
+	log.TLogln("Applied cache defaults migration")
+	return true
 }
